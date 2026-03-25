@@ -1,20 +1,43 @@
 const { ApplicationCommandOptionType, EmbedBuilder } = require('discord.js');
 const { validateApiKey, getPlayerProfile, getMatchDetails } = require('../../utils/leetifyApi');
+const SteamProfile = require('../../models/SteamProfile');
+const { getPlayerSummary } = require('../../utils/steamApi');
 
 module.exports = {
   name: 'leetify',
-  description: 'Query Leetify for CS player profile or match details.',
+  description: 'Query Leetify for CS player stats, recent matches, or match details.',
   options: [
     {
-      name: 'profile',
-      description: 'Get a player profile from Leetify',
+      name: 'stats',
+      description: 'Get CS2 stats for a player (identity-aware)',
       type: ApplicationCommandOptionType.Subcommand,
       options: [
         {
-          name: 'steamid',
-          description: 'Steam profile ID or username (steam-only for now).',
-          type: ApplicationCommandOptionType.String,
-          required: true,
+          name: 'user',
+          description: 'Discord user to look up (optional, uses yourself if omitted)',
+          type: ApplicationCommandOptionType.User,
+          required: false,
+        },
+      ],
+    },
+    {
+      name: 'recent',
+      description: 'View recent matches for a player (identity-aware)',
+      type: ApplicationCommandOptionType.Subcommand,
+      options: [
+        {
+          name: 'count',
+          description: 'Number of recent matches to show (1-5, default 1)',
+          type: ApplicationCommandOptionType.Integer,
+          required: false,
+          min_value: 1,
+          max_value: 5,
+        },
+        {
+          name: 'user',
+          description: 'Discord user to look up (optional, uses yourself if omitted)',
+          type: ApplicationCommandOptionType.User,
+          required: false,
         },
       ],
     },
@@ -43,16 +66,36 @@ module.exports = {
     console.log(`[Leetify Command] Subcommand: ${subcommand}`);
 
     try {
-      if (subcommand === 'profile') {
-        console.log('[Leetify Profile] Processing profile request');
-        const steamId = interaction.options.getString('steamid');
-        console.log(`[Leetify Profile] Steam ID: ${steamId}`);
+      if (subcommand === 'stats') {
+        console.log('[Leetify Stats] Processing stats request');
+        const targetUser = interaction.options.getUser('user') || interaction.user;
+        console.log(`[Leetify Stats] Looking up stats for: ${targetUser.id}`);
+
+        // Look up the user's registered Steam profile
+        const steamProfile = await SteamProfile.findOne({ discordId: targetUser.id });
+        if (!steamProfile) {
+          return interaction.editReply(`❌ \`${targetUser.username}\` has not registered a Steam profile. They can use \`/iam\` to register.`);
+        }
+
+        const steamId = steamProfile.steam64Id;
+        console.log(`[Leetify Stats] Using Steam64: ${steamId}`);
         const profile = await getPlayerProfile(steamId);
-        console.log(`[Leetify Profile] Successfully fetched profile: ${profile.name || steamId}`);
+        
+        // Get Steam avatar
+        let steamAvatar = null;
+        try {
+          const steamSummary = await getPlayerSummary(steamId);
+          steamAvatar = steamSummary.avatar;
+        } catch (error) {
+          console.warn('[Leetify Stats] Could not fetch Steam avatar:', error.message);
+        }
+        
+        console.log(`[Leetify Stats] Successfully fetched profile: ${profile.name || steamId}`);
 
         const embed = new EmbedBuilder()
-          .setTitle(`${profile.name || 'Player Profile'}`)
+          .setTitle(`${profile.name || 'Player Profile'} (${targetUser.username})`)
           .setColor('#1E90FF')
+          .setThumbnail(steamAvatar || targetUser.displayAvatarURL({ size: 256 }))
           .setFooter({ text: 'Leetify CS2 Stats' })
           .setTimestamp();
 
@@ -88,7 +131,11 @@ module.exports = {
         if (rating.t_leetify) metrics.push(`T Leetify: **${(rating.t_leetify * 100).toFixed(2)}**`);
         
         if (metrics.length > 0) {
-          embed.addFields({ name: '⚡ Performance', value: metrics.join(' | '), inline: false });
+          // Split metrics into two rows for better display
+          const firstRow = metrics.slice(0, Math.ceil(metrics.length / 2)).join(' | ');
+          const secondRow = metrics.slice(Math.ceil(metrics.length / 2)).join(' | ');
+          const metricsValue = firstRow + '\n' + secondRow;
+          embed.addFields({ name: '⚡ Performance', value: metricsValue, inline: false });
         }
 
         // Accuracy Stats
@@ -100,7 +147,11 @@ module.exports = {
         if (stats.reaction_time_ms) accuracy.push(`Reaction: **${stats.reaction_time_ms.toFixed(0)}ms**`);
         
         if (accuracy.length > 0) {
-          embed.addFields({ name: '🎯 Accuracy & Mechanics', value: accuracy.join(' | '), inline: false });
+          // Split accuracy stats into two rows for better display
+          const firstRow = accuracy.slice(0, Math.ceil(accuracy.length / 2)).join(' | ');
+          const secondRow = accuracy.slice(Math.ceil(accuracy.length / 2)).join(' | ');
+          const accuracyValue = firstRow + '\n' + secondRow;
+          embed.addFields({ name: '🎯 Accuracy & Mechanics', value: accuracyValue, inline: false });
         }
 
         // Top Competitive Maps
@@ -131,7 +182,83 @@ module.exports = {
         }
 
         await interaction.editReply({ embeds: [embed] });
-        console.log('[Leetify Profile] Reply sent successfully');
+        console.log('[Leetify Stats] Reply sent successfully');
+        return;
+      }
+
+      if (subcommand === 'recent') {
+        console.log('[Leetify Recent] Processing recent matches request');
+        const targetUser = interaction.options.getUser('user') || interaction.user;
+        const count = interaction.options.getInteger('count') || 1;
+        console.log(`[Leetify Recent] Fetching ${count} recent matches for: ${targetUser.id}`);
+
+        // Look up the user's registered Steam profile
+        const steamProfile = await SteamProfile.findOne({ discordId: targetUser.id });
+        if (!steamProfile) {
+          return interaction.editReply(`❌ \`${targetUser.username}\` has not registered a Steam profile. They can use \`/iam\` to register.`);
+        }
+
+        const steamId = steamProfile.steam64Id;
+        console.log(`[Leetify Recent] Using Steam64: ${steamId}`);
+        const profile = await getPlayerProfile(steamId);
+        console.log(`[Leetify Recent] Successfully fetched profile: ${profile.name || steamId}`);
+
+        if (!profile.recent_matches || profile.recent_matches.length === 0) {
+          return interaction.editReply(`❌ No recent matches found for \`${targetUser.username}\`.`);
+        }
+
+        // Get Steam avatar
+        let steamAvatar = null;
+        try {
+          const steamSummary = await getPlayerSummary(steamId);
+          steamAvatar = steamSummary.avatar;
+        } catch (error) {
+          console.warn('[Leetify Recent] Could not fetch Steam avatar:', error.message);
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`Recent Matches - ${profile.name || 'Player'} (${targetUser.username})`)
+          .setColor('#1E90FF')
+          .setThumbnail(steamAvatar || targetUser.displayAvatarURL({ size: 256 }))
+          .setFooter({ text: 'Leetify CS2 Stats' })
+          .setTimestamp();
+
+        // Fetch match details for each recent match (up to count)
+        const recentMatches = profile.recent_matches.slice(0, count);
+        const matchLines = [];
+
+        for (let i = 0; i < recentMatches.length; i++) {
+          const match = recentMatches[i];
+          const resultEmoji = match.outcome === 'win' ? '✅' : match.outcome === 'loss' ? '❌' : '⚪';
+          const resultText = match.outcome === 'win' ? 'W' : match.outcome === 'loss' ? 'L' : 'T';
+          const mapName = match.map_name ? match.map_name.replace('de_', '').toUpperCase() : 'Unknown';
+          const ratingText = match.leetify_rating ? (match.leetify_rating * 100).toFixed(2) : 'N/A';
+          const rankText = match.rank ? match.rank : 'N/A';
+          
+          // Pad values for uniform spacing in monospace
+          const mapNamePadded = mapName.padEnd(8);
+          const ratingPadded = `Rating: ${ratingText}`.padEnd(14);
+          const rankPadded = `Rank: ${rankText}`.padEnd(11);
+          
+          matchLines.push(`${resultEmoji} \`${resultText} | ${mapNamePadded} | ${ratingPadded} | ${rankPadded}\``);
+        }
+
+        // Calculate rank change (most recent vs oldest in selection)
+        let rankChangeText = '';
+        if (recentMatches.length > 1 && recentMatches[0].rank && recentMatches[recentMatches.length - 1].rank) {
+          const rankChange = recentMatches[0].rank - recentMatches[recentMatches.length - 1].rank;
+          const rankChangeSymbol = rankChange > 0 ? '📈' : rankChange < 0 ? '📉' : '➡️';
+          rankChangeText = ` | Rank Change: ${rankChangeSymbol} ${rankChange > 0 ? '+' : ''}${rankChange}`;
+        } else if (recentMatches.length === 1 && recentMatches[0].rank) {
+          rankChangeText = ` | Current Rank: ${recentMatches[0].rank}`;
+        }
+
+        if (matchLines.length > 0) {
+          embed.addFields({ name: `📋 Match History${rankChangeText}`, value: matchLines.join('\n'), inline: false });
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+        console.log('[Leetify Recent] Reply sent successfully');
         return;
       }
 
@@ -158,7 +285,7 @@ module.exports = {
         return;
       }
 
-      await interaction.editReply('Unknown subcommand. Use profile or match.');
+      await interaction.editReply('Unknown subcommand. Use stats, recent, or match.');
       console.warn(`[Leetify Command] Unknown subcommand: ${subcommand}`);
     } catch (error) {
       console.error(`[Leetify Command] Error caught:`, error.message);
