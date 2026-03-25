@@ -68,20 +68,24 @@ node src/index.js
 ## Commands
 
 ### Moderation & Server Management
-- `/ban <user> [reason]`
-- `/kick <user> [reason]`
-- `/timeout <user> <duration> [reason]`
-- `/set-banned-word <word>` — Set a banned word for the current channel
-- `/get-banned-word` — View banned words in current channel
-- `/remove-banned-word <word>`
-- `/autorole-configure <role>`
-- `/autorole-disable`
+```
+/ban <user> [reason]
+/kick <user> [reason]`
+/timeout <user> <duration> [reason]`
+/set-banned-word <word>` — Set a banned word for the current channel
+/get-banned-word` — View banned words in current channel
+/remove-banned-word <word>`
+/autorole-configure <role>`
+/autorole-disable
+```
 
 ### Economy & Fun
-- `/balance`
-- `/shop`
-- `/ping`
-- `/roll`
+```
+/balance
+/shop
+/ping
+/roll
+```
 
 ### Leetify & Steam
 
