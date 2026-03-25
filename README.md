@@ -85,11 +85,11 @@ node src/index.js
 
 ### Leetify & Steam
 
-First, link your Steam profile:
+First, link your Steam profile via 1 of 3 methods:
 ```
-/iam steam64_id:76561198123456789
+/iam steam64_id:00000000000000000
 /iam vanity_url:your-steam-vanity
-/iam profile_url:https://steamcommunity.com/profiles/76561198123456789
+/iam profile_url:https://steamcommunity.com/profiles/00000000000000000
 ```
 
 Then the stats commands will just work for you by default, or you can point them at someone else:
