@@ -1,6 +1,6 @@
 # Dandelion-Bot
 
-A Discord bot themed around Dandelion from *Girls' Frontline*. It's got the usual server management stuff — moderation, leveling, economy — plus a Leetify/Steam integration for tracking CS2 stats directly in Discord. Built with Node.js and Discord.js, MongoDB for persistence, and a handful of other libraries for the fun bits.
+A Discord bot themed around Dandelion from *Girls' Frontline*. It's got the usual server management function like moderation, leveling, economy, plus a Leetify/Steam integration for tracking CS2 stats directly in Discord. Built with Node.js and Discord.js, MongoDB for persistence, and a handful of other libraries for misc. features.
 
 ## Stack
 
